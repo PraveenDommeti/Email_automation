@@ -10,7 +10,7 @@ A modern, AI-powered email automation platform for sending personalized cold ema
 - 📊 **Real-time Progress Tracking** - Monitor campaign progress live
 - 📝 **Campaign Logs** - Detailed logs of all email activities
 - 🎨 **Modern UI** - Beautiful, responsive dark-themed interface
-- ⚡ **Rate Limiting** - Prevents Gmail account flags (150 emails/hour)
+- ♨️ **Rate Limiting** - Prevents Gmail account flags (150 emails/hour)
 
 ## 🏗️ Architecture
 
