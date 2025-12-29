@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Automation System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-paper-plane"></i> Email Automation System</h1>
+            <p>🚀 Professional job application email automation tool with modern design</p>
+        </header>
+
+        <div class="tabs">
+            <button class="tab-button active" onclick="openTab(event, 'send-tab')">
+                <i class="fas fa-paper-plane"></i> Send Emails
+            </button>
+            <button class="tab-button" onclick="openTab(event, 'verify-tab')">
+                <i class="fas fa-check-circle"></i> Verify Emails
+            </button>
+            <button class="tab-button" onclick="openTab(event, 'logs-tab')">
+                <i class="fas fa-list"></i> Logs & Results
+            </button>
+        </div>
+
+        <!-- Send Emails Tab -->
+        <div id="send-tab" class="tab-content active">
+            <div class="card">
+                <h2><i class="fas fa-cog"></i> Email Configuration</h2>
+                <form id="email-form">
+                    <div class="form-group">
+                        <label for="sender-email">Sender Email:</label>
+                        <input type="email" id="sender-email" value="praveendommeti333@gmail.com" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="app-password">App Password:</label>
+                        <input type="password" id="app-password" value="efxm vcbq bafo lvqd" required>
+                        <small>Use Gmail App Password, not regular password</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="subject">Email Subject:</label>
+                        <input type="text" id="subject" value="Seeking Internship/Job Opportunity & Referral Consideration" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="max-emails">Maximum Emails to Send:</label>
+                        <input type="number" id="max-emails" value="30" min="1" max="100" required>
+                    </div>
+                </form>
+            </div>
+
+            <div class="card">
+                <h2><i class="fas fa-file-upload"></i> File Uploads</h2>
+                
+                <div class="upload-section">
+                    <label>Resume (PDF):</label>
+                    <div class="file-upload">
+                        <input type="file" id="resume-file" accept=".pdf" required>
+                        <label for="resume-file" class="file-label">
+                            <i class="fas fa-cloud-upload-alt"></i> Choose Resume PDF
+                        </label>
+                        <span class="file-name" id="resume-name">No file selected</span>
+                    </div>
+                </div>
+                
+                <div class="upload-section">
+                    <label>Email List (CSV or PDF):</label>
+                    <div class="file-upload">
+                        <input type="file" id="email-csv" accept=".csv,.pdf" required>
+                        <label for="email-csv" class="file-label">
+                            <i class="fas fa-cloud-upload-alt"></i> Choose Email File
+                        </label>
+                        <span class="file-name" id="csv-name">No file selected</span>
+                    </div>
+                    <small>CSV should have columns: SNo, Name, Email | PDF should contain email addresses</small>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2><i class="fas fa-eye"></i> Email Preview</h2>
+                <div class="email-preview">
+                    <div class="preview-header">
+                        <strong>Subject:</strong> <span id="preview-subject">Seeking Internship/Job Opportunity & Referral Consideration</span>
+                    </div>
+                    <div class="preview-body">
+                        <p>Dear Hiring Manager,</p>
+                        <p>I hope you're doing well.</p>
+                        <p>My name is Praveen Dommeti, and I'm currently pursuing a B.Tech in Information Technology...</p>
+                        <p><em>[Full email content will be sent as configured in mail.py]</em></p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="action-section">
+                <button id="test-btn" class="btn btn-secondary" style="margin-right: 15px;">
+                    <i class="fas fa-flask"></i> Send Test Email
+                </button>
+                <button id="send-btn" class="btn btn-primary">
+                    <i class="fas fa-paper-plane"></i> Start Sending Emails
+                </button>
+                <button id="cancel-btn" class="btn btn-danger" style="display: none; margin-left: 15px;">
+                    <i class="fas fa-stop"></i> Cancel Sending
+                </button>
+            </div>
+
+            <!-- Progress Section -->
+            <div id="progress-section" class="card fade-in" style="display: none;">
+                <h2><i class="fas fa-chart-line"></i> Sending Progress</h2>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill"></div>
+                </div>
+                <div class="progress-stats">
+                    <span id="progress-text">0 / 0 emails processed</span>
+                    <div class="stats">
+                        <span class="success"><i class="fas fa-check-circle"></i> <span id="sent-count">0</span> Sent</span>
+                        <span class="error"><i class="fas fa-times-circle"></i> <span id="failed-count">0</span> Failed</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Verify Emails Tab -->
+        <div id="verify-tab" class="tab-content">
+            <div class="card">
+                <h2><i class="fas fa-shield-alt"></i> Email Verification</h2>
+                <p>Verify email addresses for deliverability before sending</p>
+                
+                <div class="upload-section">
+                    <label>Email List (CSV):</label>
+                    <div class="file-upload">
+                        <input type="file" id="verify-csv" accept=".csv">
+                        <label for="verify-csv" class="file-label">
+                            <i class="fas fa-cloud-upload-alt"></i> Choose Email CSV
+                        </label>
+                        <span class="file-name" id="verify-csv-name">No file selected</span>
+                    </div>
+                </div>
+                
+                <button id="verify-btn" class="btn btn-secondary">
+                    <i class="fas fa-check-circle"></i> Start Verification
+                </button>
+                
+                <div id="verification-status" style="display: none;">
+                    <p><i class="fas fa-spinner fa-spin"></i> Verifying emails...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Logs & Results Tab -->
+        <div id="logs-tab" class="tab-content">
+            <div class="card">
+                <h2><i class="fas fa-list"></i> Email Logs</h2>
+                <div id="email-logs" class="logs-container">
+                    <p class="no-logs">No logs available. Start sending emails to see logs here.</p>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2><i class="fas fa-download"></i> Download Results</h2>
+                <button id="download-btn" class="btn btn-secondary">
+                    <i class="fas fa-download"></i> Download Verification Results
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
