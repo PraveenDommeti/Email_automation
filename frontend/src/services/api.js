@@ -26,12 +26,20 @@ export const uploadFile = async (file) => {
 
 // AI Generation
 export const generateAIEmail = async (data) => {
+    // data = { job_role, experience_level, resume_file, ... }
     const response = await api.post('/api/ai/generate_email_ai', data);
     return response.data;
 };
 
 export const generateBatchEmails = async (data) => {
     const response = await api.post('/api/ai/generate_batch_emails', data);
+    return response.data;
+};
+
+// ATS Analysis (New)
+export const analyzeResume = async (data) => {
+    // data = { resume_file, job_description }
+    const response = await api.post('/api/ai/analyze_resume', data);
     return response.data;
 };
 

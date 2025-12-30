@@ -1,432 +1,701 @@
-import { useState } from 'react';
-import { FaCloudUploadAlt, FaGoogle, FaPaperPlane, FaQuestionCircle, FaRobot } from 'react-icons/fa';
-import './App.css';
-import AIEmailGenerator from './components/AIEmailGenerator';
-import EmailPreview from './components/EmailPreview';
-import FileUpload from './components/FileUpload';
-import GmailAuth from './components/GmailAuth';
-import LogsTable from './components/LogsTable';
-import ProgressTracker from './components/ProgressTracker';
-import { cancelEmails, sendEmails } from './services/api';
+import { AnimatePresence, motion } from 'framer-motion';
+import {
+    AlertCircle,
+    AlertTriangle,
+    BarChart3,
+    CheckCircle2,
+    FileText,
+    Lightbulb,
+    Mail,
+    RefreshCw,
+    Send,
+    ShieldCheck,
+    UploadCloud,
+    Wand2,
+    XOctagon
+} from 'lucide-react';
+import { useEffect, useState } from 'react';
+import './index.css';
+import {
+    analyzeResume,
+    cancelEmails,
+    checkGmailStatus,
+    generateAIEmail,
+    getGmailAuthUrl,
+    getProgress,
+    sendEmails,
+    uploadFile
+} from './services/api';
 
-// Help content for each tab
-const helpContent = {
-    setup: {
-        title: 'Getting Started',
-        items: [
-            {
-                title: 'Why Connect Gmail?',
-                desc: 'Gmail OAuth 2.0 ensures secure sending without storing your password. Emails are sent directly from your account.'
-            },
-            {
-                title: 'Email Limits',
-                desc: 'Gmail allows ~500 emails/day for personal accounts, ~2000/day for Workspace. We recommend 30-50 per campaign.'
-            },
-            {
-                title: 'Privacy & Security',
-                desc: 'We never store your Gmail credentials. Only temporary access tokens are used during the session.'
-            }
-        ]
-    },
-    ai: {
-        title: 'AI Email Generation',
-        items: [
-            {
-                title: 'How AI Works',
-                desc: 'Our Gemini AI analyzes your resume and recipient details to craft personalized, professional emails.'
-            },
-            {
-                title: 'Best Practices',
-                desc: 'Include specific company names and roles for better personalization. Review AI output before sending.'
-            },
-            {
-                title: 'Customization',
-                desc: 'AI-generated content is fully editable. Use it as a starting point and add your personal touch.'
-            }
-        ]
-    },
-    preview: {
-        title: 'Review & Launch',
-        items: [
-            {
-                title: 'Before Sending',
-                desc: 'Double-check subject line, email body, and ensure your resume attachment is correct.'
-            },
-            {
-                title: 'Campaign Timing',
-                desc: 'Best times to send: Tuesday-Thursday, 9-11 AM recipient\'s local time.'
-            },
-            {
-                title: 'Rate Limiting',
-                desc: 'Emails are sent with delays to avoid spam filters and maintain deliverability.'
-            }
-        ]
-    },
-    progress: {
-        title: 'Campaign Analytics',
-        items: [
-            {
-                title: 'Real-time Tracking',
-                desc: 'Monitor sent, failed, and pending emails as your campaign runs.'
-            },
-            {
-                title: 'Error Handling',
-                desc: 'Failed emails are logged with reasons. You can retry or skip as needed.'
-            },
-            {
-                title: 'Campaign Control',
-                desc: 'You can pause or cancel the campaign at any time without losing progress data.'
-            }
-        ]
-    }
-};
-
-function App() {
-    const [resumePath, setResumePath] = useState(null);
-    const [csvPath, setCsvPath] = useState(null);
-    const [gmailAuthenticated, setGmailAuthenticated] = useState(false);
-    const [connectedEmail, setConnectedEmail] = useState('');
-    const [emailContent, setEmailContent] = useState({
-        subject: 'Seeking Internship/Job Opportunity & Referral Consideration',
-        body: `Dear Hiring Manager,
-
-I hope this message finds you well.
-
-My name is [Your Name], and I'm currently pursuing a B.Tech in Information Technology. I'm reaching out to explore any internship or entry-level opportunities that align with my skills in full-stack development and data analytics.
-
-I've gained hands-on experience working with modern technologies and am eager to contribute to your team. I believe my technical skills and enthusiasm for learning would make me a valuable addition to your organization.
-
-I would greatly appreciate the opportunity to discuss how I can contribute to your team, or if you could provide any guidance on relevant openings.
-
-Thank you for your time and consideration.
-
-Warm regards,
-[Your Name]`
-    });
-    const [maxEmails, setMaxEmails] = useState(30);
-    const [useAI, setUseAI] = useState(false);
-    const [isSending, setIsSending] = useState(false);
-    const [activeTab, setActiveTab] = useState('setup');
-    const [campaignName, setCampaignName] = useState('New Campaign');
-
-    // Calculate step completion status
-    const isSetupComplete = gmailAuthenticated && resumePath && csvPath;
-    const isAIComplete = useAI || emailContent.subject.length > 0;
-    const isPreviewComplete = isSending;
-
-    const getTabStatus = (tab) => {
-        switch (tab) {
-            case 'setup':
-                return isSetupComplete ? 'completed' : 'active';
-            case 'ai':
-                if (!isSetupComplete) return 'locked';
-                return isAIComplete ? 'completed' : 'active';
-            case 'preview':
-                if (!isSetupComplete) return 'locked';
-                return isPreviewComplete ? 'completed' : 'active';
-            case 'progress':
-                if (!isSetupComplete) return 'locked';
-                return 'active';
-            default:
-                return 'active';
-        }
-    };
-
-    const canAccessTab = (tab) => {
-        if (tab === 'setup') return true;
-        return isSetupComplete;
-    };
-
-    const handleTabClick = (tab) => {
-        if (canAccessTab(tab)) {
-            setActiveTab(tab);
-        }
-    };
-
-    const handleEmailGenerated = (generated) => {
-        setEmailContent(generated);
-        setUseAI(true);
-    };
-
-    const handleStartCampaign = async () => {
-        if (!gmailAuthenticated) {
-            alert('Please connect your Gmail account first');
-            return;
-        }
-
-        if (!resumePath || !csvPath) {
-            alert('Please upload both resume and email list');
-            return;
-        }
-
-        try {
-            setIsSending(true);
-            await sendEmails({
-                csv_file: csvPath,
-                resume_file: resumePath,
-                subject: emailContent.subject,
-                body: emailContent.body,
-                max_emails: maxEmails,
-                use_ai: useAI
-            });
-            setActiveTab('progress');
-        } catch (error) {
-            console.error('Error starting campaign:', error);
-            alert('Failed to start campaign: ' + (error.response?.data?.message || error.message));
-            setIsSending(false);
-        }
-    };
-
-    const handleCancelCampaign = async () => {
-        if (window.confirm('Are you sure you want to cancel the campaign?')) {
-            try {
-                await cancelEmails();
-            } catch (error) {
-                console.error('Error cancelling campaign:', error);
-            }
-        }
-    };
-
-    const handleCampaignComplete = () => {
-        setIsSending(false);
-    };
-
-    const getCampaignStatus = () => {
-        if (isSending) return { text: 'Sending', class: 'sending' };
-        if (isSetupComplete) return { text: 'Ready', class: 'ready' };
-        return { text: 'Setup Required', class: 'pending' };
-    };
-
-    const currentHelp = helpContent[activeTab];
-    const campaignStatus = getCampaignStatus();
+// --- Sidebar Component ---
+const Sidebar = ({ activeTab, setActiveTab, gmailStatus }) => {
+    const menuItems = [
+        { id: 'setup', label: 'Setup & Upload', icon: <UploadCloud size={20} /> },
+        { id: 'ats', label: 'ATS Scanner', icon: <FileText size={20} /> },
+        { id: 'ai', label: 'AI Generator', icon: <Wand2 size={20} /> },
+        { id: 'preview', label: 'Preview & Send', icon: <Send size={20} /> },
+        { id: 'progress', label: 'Campaign Progress', icon: <BarChart3 size={20} /> },
+    ];
 
     return (
-        <div className="app">
-            {/* Header */}
-            <header className="app-header">
-                <div className="header-content">
-                    <h1>
-                        <FaPaperPlane className="header-icon" />
-                        Email Automation System
-                    </h1>
-                    <p className="subtitle">
-                        <FaRobot /> AI-Powered Cold Email Campaign Platform
-                    </p>
+        <aside className="sidebar">
+            <div className="logo-container">
+                <div className="logo-icon">
+                    <Mail color="var(--color-accent)" size={24} />
                 </div>
-            </header>
-
-            {/* Campaign Summary Bar */}
-            <div className="campaign-summary-bar">
-                <div className="summary-item">
-                    <span className="summary-label">Campaign:</span>
-                    <span className="summary-value">{campaignName}</span>
-                </div>
-                <div className="summary-item">
-                    <span className="summary-label">Emails:</span>
-                    <span className="summary-value">{maxEmails}</span>
-                </div>
-                <div className="summary-item">
-                    <span className="summary-label">Status:</span>
-                    <span className={`summary-badge ${campaignStatus.class}`}>
-                        {campaignStatus.text}
-                    </span>
-                </div>
-                <div className="summary-item">
-                    <span className="summary-label">Gmail:</span>
-                    <span className={`summary-badge ${gmailAuthenticated ? 'connected' : 'disconnected'}`}>
-                        {gmailAuthenticated ? '✓ Connected' : '○ Not Connected'}
-                    </span>
-                </div>
+                <h1 className="logo-text">ColdMail <span className="text-accent">AI</span></h1>
             </div>
 
-            {/* Step Tabs */}
-            <div className="tabs-container">
-                <div className="tabs">
+            <nav className="nav-menu">
+                {menuItems.map((item) => (
                     <button
-                        className={`tab-button ${activeTab === 'setup' ? 'active' : ''} ${getTabStatus('setup') === 'completed' ? 'completed' : ''}`}
-                        onClick={() => handleTabClick('setup')}
+                        key={item.id}
+                        onClick={() => setActiveTab(item.id)}
+                        className={`nav-item ${activeTab === item.id ? 'active' : ''}`}
                     >
-                        <span className="step-number">1</span>
-                        Setup
+                        {item.icon}
+                        <span>{item.label}</span>
+                        {activeTab === item.id && (
+                            <motion.div
+                                layoutId="activeTabIndicator"
+                                className="active-indicator"
+                            />
+                        )}
                     </button>
-                    <button
-                        className={`tab-button ${activeTab === 'ai' ? 'active' : ''} ${getTabStatus('ai') === 'completed' ? 'completed' : ''}`}
-                        onClick={() => handleTabClick('ai')}
-                        disabled={!canAccessTab('ai')}
-                    >
-                        <span className="step-number">2</span>
-                        AI Generator
-                    </button>
-                    <button
-                        className={`tab-button ${activeTab === 'preview' ? 'active' : ''} ${getTabStatus('preview') === 'completed' ? 'completed' : ''}`}
-                        onClick={() => handleTabClick('preview')}
-                        disabled={!canAccessTab('preview')}
-                    >
-                        <span className="step-number">3</span>
-                        Preview & Send
-                    </button>
-                    <button
-                        className={`tab-button ${activeTab === 'progress' ? 'active' : ''}`}
-                        onClick={() => handleTabClick('progress')}
-                        disabled={!canAccessTab('progress')}
-                    >
-                        <span className="step-number">4</span>
-                        Progress
-                    </button>
+                ))}
+            </nav>
+
+            <div className="sidebar-footer">
+                <button className="nav-item text-danger mb-2 w-full justify-start" onClick={() => window.location.reload()}>
+                    <XOctagon size={20} />
+                    <span>Logout</span>
+                </button>
+                <div className={`status-badge ${gmailStatus ? 'connected' : 'disconnected'}`}>
+                    {gmailStatus ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+                    <span>{gmailStatus ? 'Gmail Connected' : 'Gmail Disconnected'}</span>
                 </div>
             </div>
+        </aside>
+    );
+};
 
-            {/* Main Container with Content + Help Panel */}
-            <div className="main-container">
-                {/* Content Area */}
-                <div className="content-area">
-                    {activeTab === 'setup' && (
-                        <div className="tab-content">
-                            <div className="card">
-                                <h2><FaGoogle /> Connect Email Account</h2>
-                                <GmailAuth
-                                    onAuthSuccess={() => setGmailAuthenticated(true)}
-                                    onEmailReceived={setConnectedEmail}
-                                />
+// --- Setup Component ---
+const SetupAndUpload = ({ gmailStatus, onConnectGmail, onUploadComplete, resumeInfo, csvInfo, onNext, maxEmails, setMaxEmails }) => {
+    const [uploadingResume, setUploadingResume] = useState(false);
+    const [uploadingCsv, setUploadingCsv] = useState(false);
+
+    const handleUpload = async (e, type) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (type === 'resume') setUploadingResume(true);
+        else setUploadingCsv(true);
+
+        try {
+            const result = await uploadFile(file);
+            onUploadComplete(type, result);
+        } catch (error) {
+            console.error("Upload failed", error);
+            alert("Upload failed: " + error.message);
+        } finally {
+            if (type === 'resume') setUploadingResume(false);
+            else setUploadingCsv(false);
+        }
+    };
+
+    return (
+        <div className="content-container">
+            <div className="header-section">
+                <h2>Campaign Setup</h2>
+                <p className="subtitle">Connect your account and upload necessary documents.</p>
+            </div>
+
+            <div className="grid-2">
+                {/* Gmail Auth Card */}
+                <div className="card">
+                    <div className="card-header">
+                        <h3><Mail className="text-accent" size={20} /> Gmail Connection</h3>
+                    </div>
+                    <div className="card-body">
+                        <p className="text-secondary mb-4">Securely connect your Gmail account via OAuth 2.0 to send campaigns.</p>
+                        {gmailStatus ? (
+                            <div className="success-banner">
+                                <CheckCircle2 color="var(--color-success)" /> Account Connected Successfully
                             </div>
-
-                            <div className="card">
-                                <h2><FaCloudUploadAlt /> Campaign Assets</h2>
-                                <FileUpload
-                                    label="Resume (PDF)"
-                                    accept=".pdf"
-                                    id="resume-upload"
-                                    onUploadSuccess={setResumePath}
-                                />
-                                <FileUpload
-                                    label="Email List (CSV)"
-                                    accept=".csv"
-                                    id="csv-upload"
-                                    onUploadSuccess={setCsvPath}
-                                />
-                                <div className="form-group">
-                                    <label>Campaign Name:</label>
-                                    <input
-                                        type="text"
-                                        value={campaignName}
-                                        onChange={(e) => setCampaignName(e.target.value)}
-                                        className="input"
-                                        placeholder="e.g., Software Developer Outreach"
-                                    />
-                                </div>
-                                <div className="form-group">
-                                    <label>Maximum Emails to Send:</label>
-                                    <input
-                                        type="number"
-                                        value={maxEmails}
-                                        onChange={(e) => setMaxEmails(parseInt(e.target.value))}
-                                        min="1"
-                                        max="200"
-                                        className="input"
-                                    />
-                                    <small>Recommended: 30-50 emails per campaign to maintain deliverability</small>
-                                </div>
-
-                                {isSetupComplete && (
-                                    <div className="action-section" style={{ marginTop: '1.5rem', border: 'none', background: 'transparent', padding: 0 }}>
-                                        <button
-                                            className="btn btn-primary btn-large"
-                                            onClick={() => setActiveTab('ai')}
-                                        >
-                                            Continue to AI Generator →
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {activeTab === 'ai' && (
-                        <div className="tab-content">
-                            <AIEmailGenerator
-                                resumePath={resumePath}
-                                onEmailGenerated={handleEmailGenerated}
-                            />
-                            {emailContent.subject && (
-                                <div className="card success-message">
-                                    <h3>✅ Email Content Ready</h3>
-                                    <p>Your email template is ready. Continue to preview and launch your campaign.</p>
-                                    <button
-                                        className="btn btn-primary"
-                                        onClick={() => setActiveTab('preview')}
-                                        style={{ marginTop: '1rem' }}
-                                    >
-                                        Continue to Preview →
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {activeTab === 'preview' && (
-                        <div className="tab-content">
-                            <EmailPreview
-                                subject={emailContent.subject}
-                                body={emailContent.body}
-                                onEdit={setEmailContent}
-                            />
-                            <div className="action-section">
-                                <button
-                                    className="btn btn-primary btn-large"
-                                    onClick={handleStartCampaign}
-                                    disabled={isSending || !gmailAuthenticated || !resumePath || !csvPath}
-                                >
-                                    <FaPaperPlane /> Launch Campaign
-                                </button>
-                                {!gmailAuthenticated && (
-                                    <p className="warning">⚠️ Gmail account required — Go to Setup</p>
-                                )}
-                                {(!resumePath || !csvPath) && (
-                                    <p className="warning">⚠️ Missing files — Go to Setup</p>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {activeTab === 'progress' && (
-                        <div className="tab-content">
-                            <ProgressTracker
-                                isActive={isSending}
-                                onComplete={handleCampaignComplete}
-                            />
-                            {isSending && (
-                                <div className="action-section">
-                                    <button
-                                        className="btn btn-danger"
-                                        onClick={handleCancelCampaign}
-                                    >
-                                        🛑 Cancel Campaign
-                                    </button>
-                                </div>
-                            )}
-                            <LogsTable />
-                        </div>
-                    )}
+                        ) : (
+                            <button className="btn btn-primary" onClick={onConnectGmail}>
+                                Connect Gmail Account
+                            </button>
+                        )}
+                    </div>
                 </div>
 
-                {/* Contextual Help Panel */}
-                <div className="help-panel">
-                    <div className="help-card">
-                        <h3><FaQuestionCircle /> {currentHelp.title}</h3>
-                        {currentHelp.items.map((item, index) => (
-                            <div className="help-item" key={index}>
-                                <h4>{item.title}</h4>
-                                <p>{item.desc}</p>
+                {/* File Uploads */}
+                <div className="card">
+                    <div className="card-header">
+                        <h3><UploadCloud className="text-accent" size={20} /> File Uploads</h3>
+                    </div>
+                    <div className="card-body stack">
+                        <div className="upload-row">
+                            <label className="text-sm uppercase text-secondary">Resume (PDF)</label>
+                            <div className="file-input-wrapper">
+                                <input type="file" accept=".pdf" onChange={(e) => handleUpload(e, 'resume')} />
+                                <div className={`fake-input ${resumeInfo ? 'has-file' : ''}`}>
+                                    {resumeInfo ? (
+                                        <span className="flex-center"><CheckCircle2 size={14} className="mr-2 text-success" /> {resumeInfo.filename}</span>
+                                    ) : "Choose PDF..."}
+                                    {uploadingResume && <RefreshCw className="spin" size={14} />}
+                                </div>
                             </div>
-                        ))}
+                        </div>
+
+                        <div className="upload-row">
+                            <label className="text-sm uppercase text-secondary">Email List (CSV)</label>
+                            <div className="file-input-wrapper">
+                                <input type="file" accept=".csv" onChange={(e) => handleUpload(e, 'csv')} />
+                                <div className={`fake-input ${csvInfo ? 'has-file' : ''}`}>
+                                    {csvInfo ? (
+                                        <span className="flex-center"><CheckCircle2 size={14} className="mr-2 text-success" /> {csvInfo.filename}</span>
+                                    ) : "Choose CSV..."}
+                                    {uploadingCsv && <RefreshCw className="spin" size={14} />}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="upload-row">
+                            <label className="text-sm uppercase text-secondary">Max Emails to Send</label>
+                            <input
+                                type="number"
+                                className="input-field"
+                                value={maxEmails}
+                                onChange={(e) => setMaxEmails(e.target.value)}
+                                placeholder="Default: 50"
+                                min="1"
+                            />
+                        </div>
                     </div>
                 </div>
             </div>
+            {resumeInfo && csvInfo && (
+                <div className="flex justify-end mt-4">
+                    <button className="btn btn-secondary" onClick={onNext}>
+                        Next: ATS Scanner &rarr;
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+};
 
-            {/* Footer */}
-            <footer className="app-footer">
-                <p>🔐 Secure OAuth 2.0 • 🤖 Powered by Gemini AI • ⚡ Built for Professionals</p>
-            </footer>
+// --- ATS Scanner ---
+const ATSScanner = ({ resumePath, onNext }) => {
+    const [jobDesc, setJobDesc] = useState('');
+    const [analyzing, setAnalyzing] = useState(false);
+    const [analysis, setAnalysis] = useState(null);
+
+    const handleAnalyze = async () => {
+        if (!resumePath) {
+            alert("Please upload a resume in Setup tab first.");
+            return;
+        }
+        setAnalyzing(true);
+        try {
+            const res = await analyzeResume({ resume_file: resumePath, job_description: jobDesc });
+            if (res.success) setAnalysis(res.analysis);
+        } catch (e) {
+            console.error("Analysis Error:", e);
+            alert("Analysis failed: " + e.message);
+        } finally {
+            setAnalyzing(false);
+        }
+    };
+
+    return (
+        <div className="content-container">
+            <div className="header-section">
+                <h2>ATS Resume Scanner</h2>
+                <p className="subtitle">Analyze your resume against job descriptions to improve deliverability.</p>
+            </div>
+
+            {!resumePath ? (
+                <div className="card empty-state text-center p-8">
+                    <AlertCircle size={48} className="text-muted mx-auto mb-4" />
+                    <h3>Resume Not Found</h3>
+                    <p className="text-secondary mb-4">Please upload a resume in the Setup tab first.</p>
+                </div>
+            ) : (
+                <div className="grid-2-1">
+                    <div className="card h-full flex flex-col">
+                        <h3>Target Job Description (Optional)</h3>
+                        <p className="text-sm text-secondary mb-3">
+                            Paste the JD to check keyword matching. Analyzing without JD provides a general text audit.
+                        </p>
+                        <textarea
+                            className="input-field textarea-large mt-auto flex-1 h-64"
+                            placeholder="Paste the job description here for better matching..."
+                            value={jobDesc}
+                            onChange={e => setJobDesc(e.target.value)}
+                        />
+                        <button className="btn btn-primary mt-4 w-full" onClick={handleAnalyze} disabled={analyzing}>
+                            {analyzing ? <RefreshCw className="spin" /> : <ShieldCheck size={18} />}
+                            {analyzing ? 'Analyzing Resume...' : 'Run ATS Analysis'}
+                        </button>
+                    </div>
+
+                    <div className="card">
+                        {!analysis ? (
+                            <div className="flex-center flex-col h-full min-h-[400px] text-center text-muted">
+                                <FileText size={48} className="mb-4 opacity-20" />
+                                <p>Ready to analyze.<br />Paste a JD and click Run.</p>
+                            </div>
+                        ) : (
+                            <div className="analysis-results">
+                                <div className="score-container mb-6 text-center">
+                                    <div className="relative inline-flex items-center justify-center score-circle-container">
+                                        <svg className="w-40 h-40 transform -rotate-90">
+                                            <circle
+                                                className="text-gray-700"
+                                                strokeWidth="8"
+                                                stroke="currentColor"
+                                                fill="transparent"
+                                                r="70"
+                                                cx="80"
+                                                cy="80"
+                                            />
+                                            <motion.circle
+                                                className="text-accent"
+                                                strokeWidth="8"
+                                                strokeLinecap="round"
+                                                stroke="currentColor"
+                                                fill="transparent"
+                                                r="70"
+                                                cx="80"
+                                                cy="80"
+                                                initial={{ strokeDasharray: "440 440", strokeDashoffset: 440 }}
+                                                animate={{ strokeDashoffset: 440 - (440 * (analysis.score || 0)) / 100 }}
+                                                transition={{ duration: 1.5, ease: "easeOut" }}
+                                            />
+                                        </svg>
+                                        <div className="absolute flex flex-col items-center">
+                                            <span className="text-4xl font-bold font-mono">{analysis.score || 0}%</span>
+                                            <span className="text-xs text-secondary uppercase tracking-widest">ATS Score</span>
+                                        </div>
+                                    </div>
+                                    <p className="text-sm text-secondary mt-2 max-w-xs mx-auto italic">"{analysis.summary}"</p>
+                                </div>
+
+                                <div className="analysis-section space-y-4">
+                                    <div className="bg-subtle p-3 rounded">
+                                        <h4 className="flex-center text-sm uppercase text-secondary mb-2">
+                                            <AlertTriangle size={14} className="text-warning mr-2" /> Missing Keywords
+                                        </h4>
+                                        <div className="flex flex-wrap gap-2">
+                                            {analysis.missing_keywords && analysis.missing_keywords.length > 0 ? (
+                                                analysis.missing_keywords.map((kw, i) => (
+                                                    <span key={i} className="text-xs bg-red-900/30 text-red-200 border border-red-900/50 px-2 py-1 rounded">
+                                                        {kw}
+                                                    </span>
+                                                ))
+                                            ) : (
+                                                <span className="text-xs text-secondary italic">No critical keywords missing found.</span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <h4 className="flex-center text-sm uppercase text-success mb-2">
+                                            <CheckCircle2 size={14} className="mr-2" /> Strengths
+                                        </h4>
+                                        <ul className="text-sm text-secondary list-disc pl-4 space-y-1">
+                                            {analysis.strengths?.map((s, i) => <li key={i}>{s}</li>)}
+                                        </ul>
+                                    </div>
+
+                                    <div>
+                                        <h4 className="flex-center text-sm uppercase text-accent mb-2">
+                                            <Lightbulb size={14} className="mr-2" /> Suggestions
+                                        </h4>
+                                        <ul className="text-sm text-secondary list-disc pl-4 space-y-1">
+                                            {analysis.suggestions?.map((s, i) => <li key={i}>{s}</li>)}
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+            <div className="flex justify-end mt-4">
+                <button className="btn btn-secondary" onClick={onNext}>
+                    Next: AI Generator &rarr;
+                </button>
+            </div>
+        </div>
+    );
+};
+
+// --- AI Generator ---
+const AIGenerator = ({ resumePath, onGenerateComplete, onNext }) => {
+    const [jobRole, setJobRole] = useState('');
+    const [experience, setExperience] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [result, setResult] = useState(null);
+
+    const handleGenerate = async () => {
+        if (!resumePath) {
+            alert("Please upload a resume first!");
+            return;
+        }
+        setLoading(true);
+        try {
+            const res = await generateAIEmail({
+                job_role: jobRole,
+                experience_level: experience,
+                resume_file: resumePath
+            });
+            if (res.success) {
+                setResult(res);
+                onGenerateComplete(res.subject, res.body);
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Error generating email.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="content-container">
+            <div className="header-section">
+                <h2>AI Email Generator</h2>
+                <p className="subtitle">Generate personalized cold emails using Gemini AI.</p>
+            </div>
+
+            <div className="grid-2-1">
+                <div className="card">
+                    <h3 className="mb-4">Context & Configuration</h3>
+
+                    <div className="form-group mb-4">
+                        <label className="text-sm text-secondary mb-1 block">Job Role</label>
+                        <input
+                            className="input-field"
+                            placeholder="e.g. Senior Frontend Developer"
+                            value={jobRole}
+                            onChange={e => setJobRole(e.target.value)}
+                        />
+                    </div>
+
+                    <div className="form-group mb-6">
+                        <label className="text-sm text-secondary mb-1 block">Experience Level / Highlights</label>
+                        <input
+                            className="input-field"
+                            placeholder="e.g. 5 years exp, React specialist"
+                            value={experience}
+                            onChange={e => setExperience(e.target.value)}
+                        />
+                    </div>
+
+                    <button className="btn btn-primary w-full" onClick={handleGenerate} disabled={loading}>
+                        {loading ? <RefreshCw className="spin" /> : <Wand2 size={18} />}
+                        Generate Draft
+                    </button>
+                </div>
+
+                <div className="card bg-darker">
+                    <h3>Generated Output</h3>
+                    {result ? (
+                        <div className="preview-box mt-4">
+                            <div className="mb-2">
+                                <span className="text-accent text-sm">Subject:</span>
+                                <p>{result.subject}</p>
+                            </div>
+                            <div className="divider my-2 border-t border-subtle"></div>
+                            <div>
+                                <span className="text-accent text-sm">Body:</span>
+                                <p className="whitespace-pre-wrap text-sm text-secondary mt-1">{result.body}</p>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="flex-center h-full text-muted italic p-8">
+                            Configure options and click Generate to see the magic...
+                        </div>
+                    )}
+                </div>
+            </div>
+            <div className="flex justify-end mt-4">
+                <button className="btn btn-secondary" onClick={onNext}>
+                    Next: Preview &rarr;
+                </button>
+            </div>
+        </div>
+    );
+};
+
+// --- Preview & Send ---
+const PreviewAndSend = ({ subject, body, setSubject, setBody, resumePath, csvPath, onLaunch, onNext }) => {
+
+    if (!subject && !body) {
+        return (
+            <div className="content-container">
+                <div className="card empty-state text-center p-12">
+                    <Wand2 size={48} className="text-muted mx-auto mb-4" />
+                    <h3>No Draft Generated</h3>
+                    <p className="text-secondary mb-4">Please use the AI Generator tab to create your email content first.</p>
+                </div>
+            </div>
+        )
+    }
+
+    return (
+        <div className="content-container">
+            <div className="header-section">
+                <h2>Preview & Launch</h2>
+                <p className="subtitle">Review and edit your campaign before sending.</p>
+            </div>
+
+            <div className="card">
+                <div className="preview-header mb-4">
+                    <div className="bg-darker p-4 rounded-md mb-4 border border-subtle">
+                        <div className="flex items-center gap-2 mb-2">
+                            <span className="text-secondary w-16">To:</span>
+                            <span className="bg-subtle px-2 py-1 rounded text-sm">{csvPath ? 'Recipients from CSV' : 'No CSV selected'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-secondary w-16">Subject:</span>
+                            <input
+                                className="input-field flex-1"
+                                value={subject}
+                                onChange={e => setSubject(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="preview-body mb-6">
+                    <label className="text-sm text-secondary mb-2 block">Email Content</label>
+                    <textarea
+                        className="input-field textarea-large w-full h-64"
+                        value={body}
+                        onChange={e => setBody(e.target.value)}
+                    />
+                </div>
+
+                <div className="preview-footer flex justify-between items-center border-t border-subtle pt-4">
+                    <div className="flex items-center gap-2 text-sm text-secondary">
+                        <div className={`w-3 h-3 rounded-full ${resumePath ? 'bg-success' : 'bg-danger'}`}></div>
+                        Resume: {resumePath ? 'Attached' : 'Missing'}
+                    </div>
+
+                    <button className="btn btn-primary" onClick={onLaunch} disabled={!csvPath || !resumePath}>
+                        <Send size={18} /> Launch Campaign
+                    </button>
+                </div>
+            </div>
+            <div className="flex justify-end mt-4">
+                <button className="btn btn-secondary" onClick={onNext}>
+                    Next: Campaign Progress &rarr;
+                </button>
+            </div>
+        </div>
+    );
+};
+
+// --- Progress ---
+const ProgressDashboard = () => {
+    const [stats, setStats] = useState({
+        status: 'idle',
+        current: 0,
+        total: 0,
+        sent: 0,
+        failed: 0,
+        logs: []
+    });
+
+    useEffect(() => {
+        const interval = setInterval(async () => {
+            try {
+                const data = await getProgress();
+                if (data) setStats(data);
+            } catch (e) { }
+        }, 2000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const handleStop = async () => {
+        if (confirm("Are you sure you want to stop the campaign?")) {
+            await cancelEmails();
+        }
+    };
+
+    return (
+        <div className="content-container">
+            <div className="header-section flex justify-between items-end">
+                <div>
+                    <h2>Live Campaign Progress</h2>
+                    <p className="subtitle">Real-time metrics of your active campaign.</p>
+                </div>
+                <div className="text-right">
+                    <span className={`status-badge ${stats.status === 'running' ? 'running' : 'idle'}`}>
+                        Status: {stats.status.toUpperCase()}
+                    </span>
+                </div>
+            </div>
+
+            <div className="stats-grid mb-6">
+                <div className="card stat-card">
+                    <h4 className="text-secondary mb-2">Emails Sent</h4>
+                    <div className="stat-value text-accent">{stats.sent}</div>
+                    <div className="text-xs text-secondary mt-1">/ {stats.total} Total</div>
+                </div>
+                <div className="card stat-card">
+                    <h4 className="text-secondary mb-2">Pending</h4>
+                    <div className="stat-value">{stats.total - stats.sent - stats.failed}</div>
+                </div>
+                <div className="card stat-card">
+                    <h4 className="text-secondary mb-2">Failed</h4>
+                    <div className="stat-value text-danger">{stats.failed}</div>
+                </div>
+            </div>
+
+            <div className="card h-96 flex flex-col">
+                <div className="flex justify-between items-center mb-4">
+                    <h3>Activity Log</h3>
+                    {stats.status === 'running' && (
+                        <button className="btn btn-danger-outline btn-sm" onClick={handleStop}>
+                            <XOctagon size={16} /> Stop
+                        </button>
+                    )}
+                </div>
+
+                <div className="log-window flex-1 overflow-y-auto font-mono text-sm bg-darker p-4 rounded border border-subtle">
+                    {stats.logs && stats.logs.length > 0 ? (
+                        stats.logs.map((log, i) => (
+                            <div key={i} className="mb-1 border-b border-subtle pb-1 last:border-0">
+                                <span className="opacity-50 mr-2">[{i + 1}]</span>
+                                {log}
+                            </div>
+                        ))
+                    ) : (
+                        <div className="text-muted italic">Waiting for activity...</div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
+// --- Main App ---
+function App() {
+    const [activeTab, setActiveTab] = useState('setup');
+    const [gmailStatus, setGmailStatus] = useState(false);
+
+    // App State
+    const [resumeInfo, setResumeInfo] = useState(null); // { filename, path }
+    const [csvInfo, setCsvInfo] = useState(null); // { filename, path }
+    const [emailDraft, setEmailDraft] = useState({ subject: '', body: '' });
+    const [maxEmails, setMaxEmails] = useState(50);
+
+    useEffect(() => {
+        checkGmailStatus().then(res => setGmailStatus(res.authenticated)).catch(() => setGmailStatus(false));
+    }, []);
+
+    const handleConnectGmail = async () => {
+        try {
+            const res = await getGmailAuthUrl();
+            if (res.auth_url) window.location.href = res.auth_url;
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
+    const handleUploadComplete = (type, result) => {
+        // result = { filename, path, ... }
+        if (type === 'resume') setResumeInfo(result);
+        if (type === 'csv') setCsvInfo(result);
+    };
+
+    const handleAIGenerated = (subject, body) => {
+        setEmailDraft({ subject, body });
+        setActiveTab('preview'); // Auto-switch to preview
+    };
+
+    const handleLaunchCampaign = async () => {
+        if (!csvInfo || !resumeInfo) return;
+        try {
+            await sendEmails({
+                csv_file: csvInfo.path,
+                resume_file: resumeInfo.path,
+                subject: emailDraft.subject,
+                body: emailDraft.body,
+                use_ai: true, // or toggle
+                max_emails: parseInt(maxEmails) || 50
+            });
+            setActiveTab('progress');
+        } catch (e) {
+            alert("Failed to start campaign: " + e.message);
+        }
+    };
+
+    return (
+        <div className="app-container">
+            <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} gmailStatus={gmailStatus} />
+
+            <main className="main-content">
+                <AnimatePresence mode="wait">
+                    <motion.div
+                        key={activeTab}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        transition={{ duration: 0.2 }}
+                    >
+                        {activeTab === 'setup' && (
+                            <SetupAndUpload
+                                gmailStatus={gmailStatus}
+                                onConnectGmail={handleConnectGmail}
+                                onUploadComplete={handleUploadComplete}
+                                resumeInfo={resumeInfo}
+                                csvInfo={csvInfo}
+                                onNext={() => setActiveTab('ats')}
+                                maxEmails={maxEmails}
+                                setMaxEmails={setMaxEmails}
+                            />
+                        )}
+
+                        {activeTab === 'ats' && (
+                            <ATSScanner
+                                resumePath={resumeInfo?.path}
+                                onNext={() => setActiveTab('ai')}
+                            />
+                        )}
+
+                        {activeTab === 'ai' && (
+                            <AIGenerator
+                                resumePath={resumeInfo?.path}
+                                onGenerateComplete={handleAIGenerated}
+                                onNext={() => setActiveTab('preview')}
+                            />
+                        )}
+
+                        {activeTab === 'preview' && (
+                            <PreviewAndSend
+                                subject={emailDraft.subject}
+                                setSubject={(s) => setEmailDraft(prev => ({ ...prev, subject: s }))}
+                                body={emailDraft.body}
+                                setBody={(b) => setEmailDraft(prev => ({ ...prev, body: b }))}
+                                resumePath={resumeInfo?.path}
+                                csvPath={csvInfo?.path}
+                                onLaunch={handleLaunchCampaign}
+                                onNext={() => setActiveTab('progress')}
+                            />
+                        )}
+
+                        {activeTab === 'progress' && <ProgressDashboard />}
+                    </motion.div>
+                </AnimatePresence>
+            </main>
         </div>
     );
 }

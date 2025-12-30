@@ -7,8 +7,9 @@ import google.generativeai as genai
 import os
 from dotenv import load_dotenv
 import PyPDF2
+import random
 
-load_dotenv()
+load_dotenv(override=True)
 
 class GeminiEmailGenerator:
     """Service for generating personalized emails using Gemini AI"""
@@ -22,7 +23,7 @@ class GeminiEmailGenerator:
         genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel('gemini-pro')
     
-    def generate_email(self, recipient_name='Hiring Manager', company='', job_role=None, resume_text=None):
+    def generate_email(self, recipient_name='Hiring Manager', company='', job_role=None, experience_level=None, resume_text=None):
         """
         Generate personalized email body using Gemini AI
         
@@ -30,6 +31,7 @@ class GeminiEmailGenerator:
             recipient_name (str): Name of the recipient
             company (str): Company name
             job_role (str, optional): Specific job role
+            experience_level (str, optional): Experience level (e.g. Entry, Senior)
             resume_text (str, optional): Text extracted from resume for context
             
         Returns:
@@ -39,30 +41,52 @@ class GeminiEmailGenerator:
         # Build context from resume if available
         resume_context = ""
         if resume_text:
-            resume_context = f"\n\nCandidate Background (from resume):\n{resume_text[:1500]}"
+            resume_context = f"\n\nCandidate Background (from resume):\n{resume_text[:2000]}"
         
-        prompt = f"""Generate a professional, personalized cold email for a job application with the following details:
+        # Determine the user's intent (Internship vs Job)
+        position_type = "Job Opportunity"
+        if job_role and "intern" in job_role.lower():
+            position_type = "Internship"
+        elif experience_level and "intern" in experience_level.lower():
+            position_type = "Internship"
+            
+        custom_instructions = ""
+        if job_role:
+            custom_instructions += f"- Tailor the content specifically for the role of '{job_role}'.\n"
+        if experience_level:
+            custom_instructions += f"- Emphasize the following experience/highlights: {experience_level}\n"
+            
+        prompt = f"""Generate a professional, personalized cold email for a {position_type} application.
+        
+Context:
+- Recipient: {recipient_name}
+- Company: {company if company else 'the company'}
+- Target Role: {job_role if job_role else 'any suitable position'}
+- User's Experience/Highlights: {experience_level if experience_level else 'Not specified'}
 
-Recipient: {recipient_name}
-Company: {company if company else 'the company'}
-Job Role: {job_role if job_role else 'any suitable position or internship'}
 {resume_context}
 
 Requirements:
-1. Professional and respectful tone
-2. Concise (150-200 words maximum)
-3. Highlight relevant skills and experience naturally
-4. Express genuine interest in the company
-5. Include a clear call-to-action (request for consideration/referral)
-6. Personalized to the recipient and company
-7. Warm and approachable, not overly formal
-8. Start with a proper greeting
-9. End with professional closing
+1. **Subject Line Context**: The email should align with the theme "Seeking {position_type} & Referral Consideration".
+2. **Personalization**:
+   - If applying for an Internship: Focus on eagerness to learn, academic background, and potential to contribute.
+   - If applying for a Full-time Job: Focus on professional experience, specific skills matching the role, and value add.
+   - Use the provided 'User's Experience/Highlights' to make it specific.
+3. **Tone**: Professional, confident, yet humble and warm. Not generic or robotic.
+4. **Structure**:
+   - Professional Greeting
+   - Hook: Why you are writing (mentioning the specific role if known).
+   - The 'Why Me': Connect the resume details/highlights to the company's needs.
+   - call to Action: Request for a brief chat or referral.
+   - **MANDATORY Closing**: You MUST end the email body with a sentence explicitly mentioning "Please find my resume attached" or "I have attached my resume for your review" before the sign-off.
+   - Professional Sign-off.
+
+{custom_instructions}
 
 IMPORTANT: Return ONLY the email body text. Do NOT include:
 - Subject line
-- Email signature with contact details (the signature will be added separately)
-- Any meta-commentary or explanations
+- Placeholders like [Your Name] (unless unavoidable)
+- Any meta-commentary
 
 Just return the email content from greeting to closing."""
         
@@ -111,7 +135,36 @@ Return ONLY the subject line text, nothing else."""
             print(f"Error generating subject: {e}")
             # Return a fallback subject
             return self._get_fallback_subject(company, job_role)
-    
+            
+    def analyze_resume(self, resume_text, job_description=None):
+        """
+        Analyze resume and provide ATS score and feedback (MOCKED)
+        """
+        # Mock Response Data
+        score = random.randint(78, 85)
+        
+        return {
+            "score": score,
+            "missing_keywords": ["Docker", "Kubernetes", "Microservices", "System Design"],
+            "strengths": [
+                "Strong academic background in Computer Science",
+                "Clear and professional formatting",
+                "Relevant full-stack development projects",
+                "Good usage of action verbs (e.g., Developed, implemented)"
+            ],
+            "weaknesses": [
+                "Lack of quantified results (e.g. 'Improved performance by 20%')",
+                "Some technical skills listed but not demonstrated in work experience"
+            ],
+            "suggestions": [
+                "Quantify your impact: Add metrics to your project descriptions to show tangible results.",
+                "Tailor your skills section: Group skills by category (Languages, Frameworks, Tools) for better readability.",
+                "Add a professional summary: Create a summary tailored to the specific role you are targeting.",
+                "Include a link to your GitHub or portfolio in the header."
+            ],
+            "summary": "Solid profile with good technical foundations. Needs more quantitative achievements to reach a top-tier score."
+        }
+
     def extract_resume_text(self, pdf_path):
         """
         Extract text from resume PDF

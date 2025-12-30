@@ -18,6 +18,7 @@ from config import Config
 from services.file_service import FileService
 from services.gmail_service import get_gmail_service
 from services.gemini_service import get_gemini_service
+from services.tracking_service import get_tracking_service
 from routes.ai_routes import ai_bp
 from routes.auth_routes import auth_bp
 
@@ -281,7 +282,9 @@ def send_emails_worker(csv_file, resume_file, subject, body, max_emails, use_ai,
         
         # Get services
         gmail_service = get_gmail_service()
+        tracking_service = get_tracking_service()
         gemini_service = None
+        
         if use_ai:
             try:
                 gemini_service = get_gemini_service()
@@ -292,14 +295,28 @@ def send_emails_worker(csv_file, resume_file, subject, body, max_emails, use_ai,
         # Send emails with rate limiting
         delay_between_emails = 3600 / app.config['MAX_EMAILS_PER_HOUR']
         
+        emails_sent_count = 0
+        
         for idx, recipient in enumerate(recipients):
             # Check if cancelled
             if email_progress.get('cancelled'):
                 email_progress['logs'].append('🛑 Campaign cancelled by user')
                 break
             
+            # Check for max emails limit in this run
+            if emails_sent_count >= max_emails:
+                email_progress['logs'].append(f'⏹️ Reached limit of {max_emails} emails for this run')
+                break
+
             try:
                 recipient_email = recipient['email']
+                
+                # DUPLICATE CHECK
+                if tracking_service.is_email_sent(recipient_email):
+                    # email_progress['logs'].append(f'⏭️ Skipping {recipient_email} (Already sent)')
+                    # Don't increment current/sent count, just skip
+                    continue
+                
                 recipient_name = recipient.get('name', 'Hiring Manager')
                 company = recipient.get('company', '')
                 
@@ -316,7 +333,7 @@ def send_emails_worker(csv_file, resume_file, subject, body, max_emails, use_ai,
                         email_progress['logs'].append(f'⚠️ AI generation failed for {recipient_name}, using template')
                 
                 # Send email
-                email_progress['logs'].append(f'📤 Sending {idx + 1}/{len(recipients)} to {recipient_email}...')
+                email_progress['logs'].append(f'📤 Sending to {recipient_email}...')
                 
                 success = gmail_service.send_email(
                     credentials,
@@ -328,16 +345,22 @@ def send_emails_worker(csv_file, resume_file, subject, body, max_emails, use_ai,
                 
                 if success:
                     email_progress['sent'] += 1
+                    emails_sent_count += 1
                     email_progress['logs'].append(f'✅ Email sent to {recipient_email}')
+                    
+                    # LOG SUCCESS TO DB
+                    tracking_service.log_email(recipient_email, 'sent', email_subject)
                 else:
                     email_progress['failed'] += 1
                     email_progress['logs'].append(f'❌ Failed to send to {recipient_email}')
+                    
+                    # LOG FAILURE TO DB
+                    tracking_service.log_email(recipient_email, 'failed', email_subject)
                 
                 email_progress['current'] += 1
                 
                 # Rate limiting delay
-                if idx < len(recipients) - 1:
-                    time.sleep(delay_between_emails)
+                time.sleep(delay_between_emails)
                 
             except Exception as e:
                 email_progress['failed'] += 1

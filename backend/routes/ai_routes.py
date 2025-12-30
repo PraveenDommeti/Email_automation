@@ -17,6 +17,7 @@ def generate_email_ai():
         - recipient_name (str, optional): Name of recipient
         - company (str, optional): Company name
         - job_role (str, optional): Specific job role
+        - experience_level (str, optional): Experience level
         - resume_file (str, optional): Path to uploaded resume
     
     Returns:
@@ -27,6 +28,7 @@ def generate_email_ai():
         recipient_name = data.get('recipient_name', 'Hiring Manager')
         company = data.get('company', '')
         job_role = data.get('job_role')
+        experience_level = data.get('experience_level')
         resume_file = data.get('resume_file')
         
         # Get Gemini service
@@ -42,7 +44,7 @@ def generate_email_ai():
         # Generate email content
         print(f"Generating email for {recipient_name} at {company}...")
         subject = gemini_service.generate_subject(recipient_name, company, job_role)
-        body = gemini_service.generate_email(recipient_name, company, job_role, resume_text)
+        body = gemini_service.generate_email(recipient_name, company, job_role, experience_level, resume_text)
         
         return jsonify({
             'success': True,
@@ -68,6 +70,46 @@ def generate_email_ai():
             'success': False,
             'error': str(e),
             'message': 'Failed to generate email content'
+        }), 500
+
+@ai_bp.route('/analyze_resume', methods=['POST'])
+def analyze_resume():
+    """
+    Analyze resume and return ATS score and feedback
+    
+    Request JSON:
+        - resume_file (str): Path to uploaded resume
+        - job_description (str, optional): Target JD
+        
+    Returns:
+        JSON with analysis result
+    """
+    try:
+        data = request.json
+        resume_file = data.get('resume_file')
+        job_description = data.get('job_description')
+        
+        if not resume_file:
+            return jsonify({'success': False, 'error': 'No resume file provided'}), 400
+            
+        gemini_service = get_gemini_service()
+        resume_text = gemini_service.extract_resume_text(resume_file)
+        
+        if not resume_text:
+             return jsonify({'success': False, 'error': 'Could not read resume text'}), 400
+             
+        analysis = gemini_service.analyze_resume(resume_text, job_description)
+        
+        return jsonify({
+            'success': True,
+            'analysis': analysis
+        })
+        
+    except Exception as e:
+        print(f"Error in analyze_resume: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
         }), 500
 
 @ai_bp.route('/generate_batch_emails', methods=['POST'])
